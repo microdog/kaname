@@ -1,7 +1,6 @@
-width = 300
-height = 340
-
-define ['jquery', '/coffee-dist/player-lastfm.js'], ($, LastFM) ->
+define ['jquery', 
+        '/coffee-dist/player-lastfm.js', 
+        '/coffee-dist/utils.js'], ($, LastFM, openView) ->
 
     class Setting
     
@@ -25,6 +24,7 @@ define ['jquery', '/coffee-dist/player-lastfm.js'], ($, LastFM) ->
             @login_logout = $("#js-setting-login-logout")
     
             @notification_setting = $("#js-notification-setting")
+            @album_douban_music_setting = $("#js-album-douban-music")
     
             @lastfm = new LastFM '3a79de48b56292f6a6daa967cdec2ed2', '75428b69cec448a9cd4c9b504e719941'
     
@@ -36,6 +36,7 @@ define ['jquery', '/coffee-dist/player-lastfm.js'], ($, LastFM) ->
             self = this
     
             chrome.storage.sync.get "token", (val) ->
+                self.token = val.token
                 self.logined_username.text val.token.douban_user_name
     
             @kbps_setting.bind "change", ->
@@ -46,37 +47,28 @@ define ['jquery', '/coffee-dist/player-lastfm.js'], ($, LastFM) ->
                 self.main_panel.addClass "side-out"
                 self.login_panel.addClass "side-in"
                 
-                $.getJSON "https://api.douban.com/v2/fm/user_info", (user) ->
-                    self.login_username.text user.name
-                    self.login_like.text user.liked_num + " 首"
-                    self.login_listened.text user.played_num + " 首"
-                    self.login_banned.text user.banned_num + " 首"
-                    if user.pro_status is "S"
-                        self.login_ispro.text "是"
-                    else if user.pro_status is "E"
-                        self.login_ispro.text "已过期"
-                    else
-                        self.login_ispro.text "否"
-                    self.login_prolength.text user.pro_expire_date
+                $.ajax
+                    url: "https://api.douban.com/v2/fm/user_info"
+                    type: "GET"
+                    headers:
+                        Authorization: "Bearer " + self.token.access_token
+                    dataType: "JSON"
+                    success: (user) ->
+                        self.login_username.text user.name
+                        self.login_like.text user.liked_num + " 首"
+                        self.login_listened.text user.played_num + " 首"
+                        self.login_banned.text user.banned_num + " 首"
+                        if user.pro_status is "S"
+                            self.login_ispro.text "是"
+                        else if user.pro_status is "E"
+                            self.login_ispro.text "已过期"
+                        else
+                            self.login_ispro.text "否"
+                        self.login_prolength.text user.pro_expire_date
     
             @lastfm_line.bind "click", ->
                 if not self.config.lastfm
-                    if navigator.appVersion.indexOf("Win") isnt -1
-                        frame = 'chrome'
-                    else
-                        frame = 'none'
-                    chrome.app.window.create "views/lastfm.html",
-                        id: "lastfm"
-                        bounds:
-                            width: width
-                            height: height
-                        minWidth: width
-                        maxWidth: width
-                        minHeight: height
-                        maxHeight: height
-                        resizable: false
-                        frame: frame
-                    , (win) ->
+                    openView "lastfm", "lastfm.html", (win) ->
                         win.onClosed.addListener ->
                             chrome.storage.sync.get "lastfm", (lastfm) ->
                                 console.log lastfm
@@ -107,22 +99,7 @@ define ['jquery', '/coffee-dist/player-lastfm.js'], ($, LastFM) ->
     
             @login_logout.bind "click", ->
                 chrome.storage.sync.remove "token", ()->
-                    if navigator.appVersion.indexOf("Win") isnt -1
-                        frame = 'chrome'
-                    else
-                        frame = 'none'
-                    chrome.app.window.create "views/login.html",
-                        id: "login"
-                        bounds:
-                            width: width
-                            height: height
-                        minWidth: width
-                        maxWidth: width
-                        minHeight: height
-                        maxHeight: height
-                        resizable: false
-                        frame: frame
-                    , ->
+                    openView "login", "login.html", ->
                         chrome.app.window.current().close()
             
             @panel_cancel.bind "click", ->
@@ -138,6 +115,18 @@ define ['jquery', '/coffee-dist/player-lastfm.js'], ($, LastFM) ->
                     self.config.notification = false
                     self.notification_setting.removeClass "switch-on"
                     self.notification_setting.addClass "switch-off"
+                
+                self.saveConfig()
+
+            @album_douban_music_setting.bind "click", ->
+                if not self.config.albumdoubanmusic
+                    self.config.albumdoubanmusic = true
+                    self.album_douban_music_setting.removeClass "switch-off"
+                    self.album_douban_music_setting.addClass "switch-on"
+                else
+                    self.config.albumdoubanmusic = false
+                    self.album_douban_music_setting.removeClass "switch-on"
+                    self.album_douban_music_setting.addClass "switch-off"
                 
                 self.saveConfig()
     
@@ -163,6 +152,7 @@ define ['jquery', '/coffee-dist/player-lastfm.js'], ($, LastFM) ->
             channel: "0"
             notification: false
             lastfm: ""
+            albumdoubanmusic: true
     
         renderConfig: (config)->
             @kbps_setting.val config.kbps
@@ -171,6 +161,11 @@ define ['jquery', '/coffee-dist/player-lastfm.js'], ($, LastFM) ->
                 @notification_setting.addClass "switch-on"
             else
                 @notification_setting.addClass "switch-off"
+
+            if config.albumdoubanmusic
+                @album_douban_music_setting.addClass "switch-on"
+            else
+                @album_douban_music_setting.addClass "switch-off"
     
             if config.lastfm?
                 @lastfm_value.text config.lastfm.name
